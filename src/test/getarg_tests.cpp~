@@ -1,0 +1,167 @@
+#include <boost/algorithm/string.hpp>
+#include <boost/foreach.hpp>
+#include <boost/test/unit_test.hpp>
+
+#include "util.h"
+
+BOOST_AUTO_TEST_SUITE(getarg_tests)
+
+static void
+ResetArgs(const std::string& strArg)
+{
+    std::vector<std::string> vecArg;
+    boost::split(vecArg, strArg, boost::is_space(), boost::token_compress_on);
+
+    // Insert dummy executable name:
+    vecArg.insert(vecArg.begin(), "testbitcoin");
+
+    // Convert to char*:
+    std::vector<const char*> vecChar;
+    BOOST_FOREACH(std::string& s, vecArg)
+        vecChar.push_back(s.c_str());
+
+    ParseParameters(vecChar.size(), &vecChar[0]);
+}
+
+BOOST_AUTO_TEST_CASE(boolarg)
+{
+    ResetArgs("-NIT");
+    BOOST_CHECK(GetBoolArg("-NIT"));
+    BOOST_CHECK(GetBoolArg("-NIT", false));
+    BOOST_CHECK(GetBoolArg("-NIT", true));
+
+    BOOST_CHECK(!GetBoolArg("-ni"));
+    BOOST_CHECK(!GetBoolArg("-ni", false));
+    BOOST_CHECK(GetBoolArg("-ni", true));
+
+    BOOST_CHECK(!GetBoolArg("-NITo"));
+    BOOST_CHECK(!GetBoolArg("-NITo", false));
+    BOOST_CHECK(GetBoolArg("-NITo", true));
+
+    ResetArgs("-NIT=0");
+    BOOST_CHECK(!GetBoolArg("-NIT"));
+    BOOST_CHECK(!GetBoolArg("-NIT", false));
+    BOOST_CHECK(!GetBoolArg("-NIT", true));
+
+    ResetArgs("-NIT=1");
+    BOOST_CHECK(GetBoolArg("-NIT"));
+    BOOST_CHECK(GetBoolArg("-NIT", false));
+    BOOST_CHECK(GetBoolArg("-NIT", true));
+
+    // New 0.6 feature: auto-map -nosomething to !-something:
+    ResetArgs("-noNIT");
+    BOOST_CHECK(!GetBoolArg("-NIT"));
+    BOOST_CHECK(!GetBoolArg("-NIT", false));
+    BOOST_CHECK(!GetBoolArg("-NIT", true));
+
+    ResetArgs("-noNIT=1");
+    BOOST_CHECK(!GetBoolArg("-NIT"));
+    BOOST_CHECK(!GetBoolArg("-NIT", false));
+    BOOST_CHECK(!GetBoolArg("-NIT", true));
+
+    ResetArgs("-NIT -noNIT");  // -NIT should win
+    BOOST_CHECK(GetBoolArg("-NIT"));
+    BOOST_CHECK(GetBoolArg("-NIT", false));
+    BOOST_CHECK(GetBoolArg("-NIT", true));
+
+    ResetArgs("-NIT=1 -noNIT=1");  // -NIT should win
+    BOOST_CHECK(GetBoolArg("-NIT"));
+    BOOST_CHECK(GetBoolArg("-NIT", false));
+    BOOST_CHECK(GetBoolArg("-NIT", true));
+
+    ResetArgs("-NIT=0 -noNIT=0");  // -NIT should win
+    BOOST_CHECK(!GetBoolArg("-NIT"));
+    BOOST_CHECK(!GetBoolArg("-NIT", false));
+    BOOST_CHECK(!GetBoolArg("-NIT", true));
+
+    // New 0.6 feature: treat -- same as -:
+    ResetArgs("--NIT=1");
+    BOOST_CHECK(GetBoolArg("-NIT"));
+    BOOST_CHECK(GetBoolArg("-NIT", false));
+    BOOST_CHECK(GetBoolArg("-NIT", true));
+
+    ResetArgs("--noNIT=1");
+    BOOST_CHECK(!GetBoolArg("-NIT"));
+    BOOST_CHECK(!GetBoolArg("-NIT", false));
+    BOOST_CHECK(!GetBoolArg("-NIT", true));
+
+}
+
+BOOST_AUTO_TEST_CASE(stringarg)
+{
+    ResetArgs("");
+    BOOST_CHECK_EQUAL(GetArg("-NIT", ""), "");
+    BOOST_CHECK_EQUAL(GetArg("-NIT", "eleven"), "eleven");
+
+    ResetArgs("-NIT -bar");
+    BOOST_CHECK_EQUAL(GetArg("-NIT", ""), "");
+    BOOST_CHECK_EQUAL(GetArg("-NIT", "eleven"), "");
+
+    ResetArgs("-NIT=");
+    BOOST_CHECK_EQUAL(GetArg("-NIT", ""), "");
+    BOOST_CHECK_EQUAL(GetArg("-NIT", "eleven"), "");
+
+    ResetArgs("-NIT=11");
+    BOOST_CHECK_EQUAL(GetArg("-NIT", ""), "11");
+    BOOST_CHECK_EQUAL(GetArg("-NIT", "eleven"), "11");
+
+    ResetArgs("-NIT=eleven");
+    BOOST_CHECK_EQUAL(GetArg("-NIT", ""), "eleven");
+    BOOST_CHECK_EQUAL(GetArg("-NIT", "eleven"), "eleven");
+
+}
+
+BOOST_AUTO_TEST_CASE(intarg)
+{
+    ResetArgs("");
+    BOOST_CHECK_EQUAL(GetArg("-NIT", 11), 11);
+    BOOST_CHECK_EQUAL(GetArg("-NIT", 0), 0);
+
+    ResetArgs("-NIT -nit");
+    BOOST_CHECK_EQUAL(GetArg("-NIT", 11), 0);
+    BOOST_CHECK_EQUAL(GetArg("-nit", 11), 0);
+
+    ResetArgs("-NIT=11 -nit=12");
+    BOOST_CHECK_EQUAL(GetArg("-NIT", 0), 11);
+    BOOST_CHECK_EQUAL(GetArg("-nit", 11), 12);
+
+    ResetArgs("-NIT=NaN -bar=NotANumber");
+    BOOST_CHECK_EQUAL(GetArg("-NIT", 1), 0);
+    BOOST_CHECK_EQUAL(GetArg("-nit", 11), 0);
+}
+
+BOOST_AUTO_TEST_CASE(doubledash)
+{
+    ResetArgs("--NIT");
+    BOOST_CHECK_EQUAL(GetBoolArg("-NIT"), true);
+
+    ResetArgs("--NIT=verbose --nit=1");
+    BOOST_CHECK_EQUAL(GetArg("-NIT", ""), "verbose");
+    BOOST_CHECK_EQUAL(GetArg("-nit", 0), 1);
+}
+
+BOOST_AUTO_TEST_CASE(boolargno)
+{
+    ResetArgs("-noNIT");
+    BOOST_CHECK(!GetBoolArg("-NIT"));
+    BOOST_CHECK(!GetBoolArg("-NIT", true));
+    BOOST_CHECK(!GetBoolArg("-NIT", false));
+
+    ResetArgs("-noNIT=1");
+    BOOST_CHECK(!GetBoolArg("-NIT"));
+    BOOST_CHECK(!GetBoolArg("-NIT", true));
+    BOOST_CHECK(!GetBoolArg("-NIT", false));
+
+    ResetArgs("-noNIT=0");
+    BOOST_CHECK(GetBoolArg("-NIT"));
+    BOOST_CHECK(GetBoolArg("-NIT", true));
+    BOOST_CHECK(GetBoolArg("-NIT", false));
+
+    ResetArgs("-NIT --noNIT");
+    BOOST_CHECK(GetBoolArg("-NIT"));
+
+    ResetArgs("-noNIT -NIT"); // NIT always wins:
+    BOOST_CHECK(GetBoolArg("-NIT"));
+}
+
+BOOST_AUTO_TEST_SUITE_END()
